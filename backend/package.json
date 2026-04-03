@@ -29,9 +29,7 @@
     "fastify-plugin": "^4.5.1",
     "node-cron": "^3.0.3",
     "pino-pretty": "^13.0.0",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
+    "zod": "^3.23.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.0.0",
     "@types/node-cron": "^3.0.11",

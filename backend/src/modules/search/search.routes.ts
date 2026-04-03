@@ -13,7 +13,7 @@ const SearchQuerySchema = z.object({
   lng: z.coerce.number().min(-180).max(180),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
   radius: z.coerce.number().int().min(1000).max(20000).optional().default(5000),
-  sort: z.enum(['price_asc', 'price_desc', 'estimated_travel_time']).optional().default('estimated_travel_time'),
+  sort: z.enum(['price_asc', 'price_desc', 'estimated_travel_time', 'earliest_slot']).optional().default('estimated_travel_time'),
 });
 
 export async function searchRoutes(app: FastifyInstance) {
