@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Maydon.uz — Бронирование спортивных площадок</title>
+    <meta name="description" content="Найди ближайшую спортивную площадку с удобным поиском и актуальным временем в пути. Бронируй футбольные поля, теннисные корты и многое другое.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header class="header">
+        <div class="container header-inner">
+            <div class="brand">
+                <div class="logo">Maydon<span class="dot">.uz</span></div>
+            </div>
+            <nav class="user-nav">
+                <button class="btn btn-outline" id="btnOwnerCabinet" onclick="toggleView('owner')">Кабинет владельца</button>
+                <div class="avatar-placeholder">TJ</div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- ИНТЕРФЕЙС КЛИЕНТА (ПО УМОЛЧАНИЮ) -->
+    <main class="main" id="view-client">
+        
+        <!-- Hero & Search -->
+        <section class="hero">
+            <div class="hero-bg"></div>
+            <div class="container hero-content">
+                <h1 class="hero-title">Твоя игра начинается <span class="highlight">здесь</span></h1>
+                <p class="hero-subtitle">Находим ближайшие свободные слоты. Время в пути ценнее расстояния.</p>
+                
+                <div class="search-box glass-panel">
+                    <div class="search-filters">
+                        <div class="filter-group">
+                            <label>Вид спорта</label>
+                            <select class="filter-select" id="sportSelect">
+                                <option value="football">⚽ Футбол</option>
+                                <option value="tennis">🎾 Теннис</option>
+                                <option value="basketball">🏀 Баскетбол</option>
+                            </select>
+                        </div>
+                        <div class="filter-separator"></div>
+                        <div class="filter-group loc-group" onclick="promptLocation()">
+                            <label>Локация</label>
+                            <div class="location-display">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                <span id="locationText">г. Ташкент (Определить...)</span>
+                            </div>
+                        </div>
+                        <div class="filter-separator"></div>
+                        <div class="filter-group">
+                            <label>Когда</label>
+                            <select class="filter-select" id="dateSelect">
+                                <option value="today">📅 Сегодня, 3 Апр</option>
+                                <option value="tomorrow">📅 Завтра, 4 Апр</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-large" id="btnSearch" onclick="runSearch()">Показать слоты</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Venues Feed -->
+        <section class="venues-section container" id="venuesSection" style="display: none;">
+            <div class="section-header">
+                <div>
+                    <h2 id="resultsCount">Мы нашли 4 площадки рядом с вами</h2>
+                    <p class="section-subtitle">С учетом радиуса 5км и свободных слотов</p>
+                </div>
+                <div class="sort-box">
+                    <span>Сортировка:</span>
+                    <select class="sort-select">
+                        <option>⚡ Сначала быстрые по пути (Я.Карты)</option>
+                        <option>Сначала дешевые</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="venues-grid" id="venuesGrid">
+                <!-- Data populated by JS app.js -->
+            </div>
+        </section>
+    </main>
+
+    <!-- ИНТЕРФЕЙС ВЛАДЕЛЬЦА -->
+    <main class="main" id="view-owner" style="display: none;">
+        <div class="container owner-dashboard">
+            <div class="dashboard-header">
+                <h2>Кабинет Владельца: Экопарк Арена</h2>
+                <button class="btn btn-primary btn-sm" onclick="toggleView('client')">Вернуться к поиску</button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <p>Броней сегодня</p>
+                    <h3>12</h3>
+                </div>
+                <div class="stat-card">
+                    <p>Доход сегодня</p>
+                    <h3>2 400 000 UZS</h3>
+                </div>
+                <div class="stat-card">
+                    <p>Слотов свободно</p>
+                    <h3 class="highlight">4</h3>
+                </div>
+            </div>
+
+            <div class="schedule-section">
+                <h3>Расписание и слоты (Шахматка)</h3>
+                <div class="schedule-grid" id="ownerScheduleGrid">
+                    <!-- Data populated by JS app.js -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Checkout Modal -->
+    <div class="modal-overlay" id="checkoutModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Бронирование слота <span class="badge hold-badge">Hold 5:00</span></h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="checkout-summary">
+                    <h4 id="checkoutVenueName">Экопарк Арена (Поле 1)</h4>
+                    <p class="checkout-detail">⚽ Футбол • <span>Сегодня, 20:00 - 21:00</span></p>
+                    <p class="checkout-detail location-detail">📍 Мирзо-Улугбекский район <br> 🚗 15 мин в пути</p>
+                </div>
+                
+                <div class="payment-options">
+                    <label class="payment-card active">
+                        <input type="radio" name="payment" checked>
+                        <div class="payment-info">
+                            <h5>Предоплата 30% сейчас</h5>
+                            <p>Остальное на месте. Защита от отмены.</p>
+                        </div>
+                        <div class="payment-price" id="checkoutPrepay">75 000 UZS</div>
+                    </label>
+                    <label class="payment-card">
+                        <input type="radio" name="payment">
+                        <div class="payment-info">
+                            <h5>Полная оплата онлайн</h5>
+                            <p>Никаких расчётов на месте. ⚡ Split-payment</p>
+                        </div>
+                        <div class="payment-price" id="checkoutFull">250 000 UZS</div>
+                    </label>
+                </div>
+                
+                <div class="checkout-actions">
+                    <button class="btn btn-primary btn-block" onclick="payAndConfirm()">Оплатить <span id="checkoutBtnTotal">75 000 UZS</span></button>
+                    <p class="terms-text">Нажимая кнопку, вы соглашаетесь с правилами площадки.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,401 @@
+// ============================================================
+// Maydon.uz — Prisma Schema (Phase 1)
+// Версия: 2.0 | Онлайн-оплата → Phase 2
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum VenueStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+enum BookingStatus {
+  CONFIRMED   // Phase 1: бронь сразу confirmed, без hold
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+  // Зарезервированы для Phase 2:
+  HOLD
+  EXPIRED
+}
+
+enum CancelledBy {
+  USER
+  OWNER
+  ADMIN
+}
+
+enum ModerationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
+}
+
+enum CancellationPolicy {
+  SOFT      // возврат за 1ч
+  STANDARD  // возврат за 3ч
+  STRICT    // возврат за 24ч
+}
+
+enum CoverageType {
+  GRASS
+  ARTIFICIAL
+  PARQUET
+  CONCRETE
+  SAND
+  OTHER
+}
+
+enum CommissionScope {
+  GLOBAL
+  OWNER
+  VENUE
+  FIELD
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  PAYME
+  FREEDOMPAY
+}
+
+// ============================================================
+// SPORT CATEGORIES
+// Источник правды: только Admin управляет
+// ============================================================
+model SportCategory {
+  id        Int      @id @default(autoincrement())
+  nameRu    String   @map("name_ru") @db.VarChar(100)
+  nameUz    String   @map("name_uz") @db.VarChar(100)
+  icon      String?  @db.VarChar(20)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+
+  fields    Field[]
+
+  @@map("sport_categories")
+}
+
+// ============================================================
+// OWNERS (аккаунт владельца площадки)
+// ============================================================
+model Owner {
+  id           Int      @id @default(autoincrement())
+  fullName     String   @map("full_name") @db.VarChar(200)
+  phone        String   @unique @db.VarChar(20)
+  email        String?  @unique @db.VarChar(200)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  venues              Venue[]
+  moderationRequests  ModerationRequest[]
+
+  @@map("owners")
+}
+
+// ============================================================
+// ADMIN (платформенный администратор)
+// Не регистрируется через публичный API — только seed
+// ============================================================
+model Admin {
+  id           Int      @id @default(autoincrement())
+  phone        String   @unique @db.VarChar(20)
+  email        String?  @unique @db.VarChar(200)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  moderationRequests ModerationRequest[]
+
+  @@map("admins")
+}
+
+// ============================================================
+// USERS (покупатели — бронируют слоты)
+// ============================================================
+model User {
+  id           Int      @id @default(autoincrement())
+  fullName     String?  @map("full_name") @db.VarChar(200)
+  phone        String   @unique @db.VarChar(20)
+  email        String?  @unique @db.VarChar(200)
+  passwordHash String?  @map("password_hash") @db.VarChar(255)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  bookings Booking[]
+
+  // Антифейк-контур: для создания брони обязателен верифицированный телефон
+  isPhoneVerified Boolean @default(false) @map("is_phone_verified")
+
+  @@map("users")
+}
+
+// ============================================================
+// VENUES (объект / спорткомплекс)
+// Один Venue → много Fields. Не 1:1!
+// ============================================================
+model Venue {
+  id              Int         @id @default(autoincrement())
+  ownerId         Int         @map("owner_id")
+  name            String      @db.VarChar(300)
+  description     String?     @db.Text
+  address         String      @db.VarChar(500)
+  city            String      @default("Tashkent") @db.VarChar(100)
+  district        String?     @db.VarChar(100)
+  lat             Decimal     @db.Decimal(10, 7)
+  lng             Decimal     @db.Decimal(10, 7)
+  photos          String[]    // массив URL
+  status          VenueStatus @default(DRAFT)
+  moderationNote  String?     @map("moderation_note") @db.Text
+  isActive        Boolean     @default(false) @map("is_active") // true только после APPROVED
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  owner               Owner               @relation(fields: [ownerId], references: [id])
+  fields              Field[]
+  moderationRequests  ModerationRequest[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([isActive])
+  @@index([lat, lng]) // базовый geo-индекс для Haversine фильтрации
+  @@map("venues")
+}
+
+// ============================================================
+// FIELDS (конкретное поле / корт внутри Venue)
+// ============================================================
+model Field {
+  id                  Int                @id @default(autoincrement())
+  venueId             Int                @map("venue_id")
+  sportCategoryId     Int                @map("sport_category_id")
+  name                String             @db.VarChar(200) // "Поле 1", "Корт A"
+  pricePerHour        Int                @map("price_per_hour") // UZS (целое)
+  bufferMinutes       Int                @default(15) @map("buffer_minutes") // 0|10|15|20
+  maxBookingHours     Int                @default(3) @map("max_booking_hours")
+  bookingHorizonDays  Int                @default(14) @map("booking_horizon_days")
+  cancellationPolicy  CancellationPolicy @default(STANDARD) @map("cancellation_policy")
+  // Удобства
+  coverageType        CoverageType?      @map("coverage_type")
+  hasLighting         Boolean            @default(false) @map("has_lighting")
+  hasLockerRoom       Boolean            @default(false) @map("has_locker_room")
+  hasShower           Boolean            @default(false) @map("has_shower")
+  hasParking          Boolean            @default(false) @map("has_parking")
+  isActive            Boolean            @default(true) @map("is_active")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  venue         Venue          @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  sportCategory SportCategory  @relation(fields: [sportCategoryId], references: [id])
+  schedules     FieldSchedule[]
+  blackouts     BlackoutPeriod[]
+  bookings      Booking[]
+
+  @@index([venueId])
+  @@index([sportCategoryId])
+  @@index([isActive])
+  @@map("fields")
+}
+
+// ============================================================
+// FIELD SCHEDULES (рабочие часы по дням недели)
+// dayOfWeek: 1=Пн, 2=Вт, ..., 7=Вс (ISO формат, 1-7)
+// ============================================================
+model FieldSchedule {
+  id          Int     @id @default(autoincrement())
+  fieldId     Int     @map("field_id")
+  dayOfWeek   Int     @map("day_of_week") // 1-7
+  openTime    String  @map("open_time")   // "08:00" — строка HH:MM
+  closeTime   String  @map("close_time")  // "22:00"
+  isClosed    Boolean @default(false) @map("is_closed")
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, dayOfWeek]) // один день — одна запись
+  @@map("field_schedules")
+}
+
+// ============================================================
+// BLACKOUT PERIODS (закрытие, ремонт, блокировка вручную)
+// ============================================================
+model BlackoutPeriod {
+  id        Int      @id @default(autoincrement())
+  fieldId   Int      @map("field_id")
+  startAt   DateTime @map("start_at")
+  endAt     DateTime @map("end_at")
+  reason    String?  @db.VarChar(300)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId, startAt, endAt])
+  @@map("blackout_periods")
+}
+
+// ============================================================
+// BOOKINGS (брони — ядро Phase 1)
+// ============================================================
+model Booking {
+  id              BigInt        @id @default(autoincrement())
+  fieldId         Int           @map("field_id")
+  userId          Int           @map("user_id")
+  date            DateTime      @db.Date           // только дата
+  startTime       String        @map("start_time") // "10:00" HH:MM
+  endTime         String        @map("end_time")   // "11:30" HH:MM
+  durationMinutes Int           @map("duration_minutes")
+  bufferMinutes   Int           @map("buffer_minutes") // Денормализован из Field для GiST EXCLUDE
+  status          BookingStatus @default(CONFIRMED)
+  cancelledBy     CancelledBy?  @map("cancelled_by")
+  totalAmount     Int           @map("total_amount") // UZS (информационно в Phase 1)
+  notes           String?       @db.Text
+  // Для Phase 2: hold TTL (сейчас не используется в Phase 1)
+  expiresAt       DateTime?     @map("expires_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  field   Field   @relation(fields: [fieldId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  payment Payment? // Phase 2: 1:1 связь с платежом
+
+  // ЗАЩИТА СЛОТОВ: БД использует GiST EXCLUDE constraint (миграция через raw SQL).
+  // ALTER TABLE bookings ADD CONSTRAINT no_overlapping_bookings
+  // EXCLUDE USING gist (field_id WITH =, date WITH =, tsrange((date + start_time::time)::timestamp, (date + end_time::time + (buffer_minutes || ' minutes')::interval)::timestamp, '[)') WITH &&)
+  
+  @@index([fieldId, date])
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt]) // для cron Phase 2
+  @@map("bookings")
+}
+
+// ============================================================
+// MODERATION REQUESTS
+// ============================================================
+model ModerationRequest {
+  id           Int              @id @default(autoincrement())
+  venueId      Int              @map("venue_id")
+  submittedBy  Int              @map("submitted_by")
+  reviewedBy   Int?             @map("reviewed_by") 
+  status       ModerationStatus @default(SUBMITTED)
+  adminNote    String?          @map("admin_note") @db.Text
+  submittedAt  DateTime         @default(now()) @map("submitted_at")
+  reviewedAt   DateTime?        @map("reviewed_at")
+
+  venue   Venue  @relation(fields: [venueId], references: [id])
+  owner   Owner  @relation(fields: [submittedBy], references: [id])
+  admin   Admin? @relation(fields: [reviewedBy], references: [id])
+
+  @@index([status])
+  @@index([venueId])
+  @@map("moderation_requests")
+}
+
+// ============================================================
+// AUDIT LOGS (логирование критических изменений)
+// ============================================================
+model AuditLog {
+  id          BigInt   @id @default(autoincrement())
+  entityType  String   @map("entity_type") @db.VarChar(50) // 'venue', 'booking', 'moderation'
+  entityId    BigInt   @map("entity_id")
+  action      String   @db.VarChar(50) // 'approved', 'cancelled', 'toggled', 'updated'
+  actorRole   String   @map("actor_role") @db.VarChar(20) // 'USER', 'OWNER', 'ADMIN', 'SYSTEM'
+  actorId     Int?     @map("actor_id")
+  beforePayload Json?   @map("before_payload")
+  afterPayload  Json?   @map("after_payload")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ============================================================
+// PAYMENTS — [OUT OF PHASE 1] Структурно, не используется
+// Активируется в Phase 2 при подключении провайдера
+// ============================================================
+model Payment {
+  id                  BigInt          @id @default(autoincrement())
+  bookingId           BigInt          @unique @map("booking_id")
+  provider            PaymentProvider
+  providerTxId        String?         @map("provider_tx_id") @db.VarChar(255)
+  idempotencyKey      String          @unique @default(uuid()) @map("idempotency_key")
+  amount              Int             // UZS
+  commissionRate      Decimal         @default(0) @map("commission_rate") @db.Decimal(5, 2)
+  commissionAmount    Int             @default(0) @map("commission_amount")
+  ownerAmount         Int             @default(0) @map("owner_amount")
+  splitExecuted       Boolean         @default(false) @map("split_executed")
+  status              PaymentStatus   @default(PENDING)
+  webhookReceivedAt   DateTime?       @map("webhook_received_at")
+  confirmedAt         DateTime?       @map("confirmed_at")
+  refundedAt          DateTime?       @map("refunded_at")
+  refundAmount        Int?            @map("refund_amount")
+  rawWebhookPayload   Json?           @map("raw_webhook_payload")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id])
+
+  @@index([provider, providerTxId])
+  @@map("payments")
+}
+
+// ============================================================
+// COMMISSIONS — [OUT OF PHASE 1] Структурно, не участвует в логике
+// Заполняется seed (global 5%), активируется в Phase 2
+// ============================================================
+model Commission {
+  id            Int             @id @default(autoincrement())
+  scope         CommissionScope
+  scopeId       Int?            @map("scope_id")
+  ratePercent   Decimal         @map("rate_percent") @db.Decimal(5, 2)
+  effectiveFrom DateTime        @default(now()) @map("effective_from")
+  effectiveTo   DateTime?       @map("effective_to")
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  @@index([scope, scopeId, effectiveFrom])
+  @@map("commissions")
+}
+
+// ============================================================
+// NOTIFICATIONS — [Phase 2] Структура закладывается сейчас
+// ============================================================
+model Notification {
+  id        BigInt   @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  ownerId   Int?     @map("owner_id")
+  type      String   @db.VarChar(50)
+  title     String?  @db.VarChar(255)
+  body      String?  @db.Text
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, isRead])
+  @@index([ownerId, isRead])
+  @@map("notifications")
+}
