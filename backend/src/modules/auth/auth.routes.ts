@@ -27,8 +27,8 @@ const RegisterOwnerSchema = z.object({
 function signTokens(app: FastifyInstance, payload: JwtPayload) {
   const accessToken = app.jwt.sign(payload, { expiresIn: config.JWT_ACCESS_EXPIRES });
   const refreshToken = app.jwt.sign(
-    { sub: payload.sub, role: payload.role },
-    { secret: config.JWT_REFRESH_SECRET, expiresIn: config.JWT_REFRESH_EXPIRES }
+    { sub: payload.sub, role: payload.role, phone: payload.phone },
+    { expiresIn: config.JWT_REFRESH_EXPIRES }
   );
   return { accessToken, refreshToken };
 }
@@ -121,7 +121,7 @@ export async function authRoutes(app: FastifyInstance) {
     if (!refreshToken) throw Errors.BadRequest('refreshToken is required');
 
     try {
-      const decoded = app.jwt.verify(refreshToken, { secret: config.JWT_REFRESH_SECRET }) as JwtPayload;
+      const decoded = app.jwt.verify(refreshToken) as JwtPayload;
       const payload: JwtPayload = { sub: decoded.sub, role: decoded.role, phone: decoded.phone };
       const tokens = signTokens(app, payload);
       return reply.send(tokens);

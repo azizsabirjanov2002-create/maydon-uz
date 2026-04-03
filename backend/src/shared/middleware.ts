@@ -8,8 +8,9 @@ export type JwtPayload = {
 };
 
 // Extend Fastify request with decoded user
-declare module 'fastify' {
-  interface FastifyRequest {
+declare module '@fastify/jwt' {
+  interface FastifyJWT {
+    payload: JwtPayload;
     user: JwtPayload;
   }
 }
